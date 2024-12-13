@@ -1,10 +1,11 @@
 from appl.gui import *
-from appl.database import  *
+from appl.database import  DatabaseRef
+
 
 import tkinter as tk
 
-
-
 if __name__ == "__main__":
-    app = restaurantApp()
+    database = DatabaseRef()
+    dataCreate = database.initDatabase()
+    app = restaurantApp(database)
     app.mainloop()
