@@ -3,7 +3,6 @@ from tkinter import messagebox
 import sqlite3
 
 
-
 class restaurantApp(tk.Tk):
     def __init__(self, database):
         super().__init__()
@@ -27,8 +26,8 @@ class restaurantApp(tk.Tk):
 
         if database is None:
             database = self.database
-        #if app is None:
-            #app = self.app
+        if app is None:
+            app = self.app
         print(database)
         print(app)
         frameClass(self, self.database, app).pack()
@@ -209,10 +208,13 @@ class processReservationFrame(tk.Frame):
         if self.database:
             unplacedReservations = self.database.getUnplacedReservations()
             for reservation in unplacedReservations:
-
                 print(f"Checking reservation: {reservation[0]}")  # Debugging
-                display_text = f"{reservation[1]} (Party Size: {reservation[2]}, Time: {reservation[3]})"
-                self.reservationNotSeated.insert(tk.END, display_text)
+                reservation_id = reservation[0]
+                party_name = reservation[1]
+                party_size = reservation[2]
+                party_time = reservation[3]
+                display_text = f"{party_name} (Party Size: {party_size}, Time: {party_time})"
+                self.reservationNotSeated.insert(tk.END, (display_text))
         else:
             print("Error: Database for reservations not initialized")
 
@@ -224,83 +226,86 @@ class processReservationFrame(tk.Frame):
 
         reservation_index = selected_reservation[0]
         selected_reservation_data = self.reservationNotSeated.get(reservation_index)
-        self.selected_reservation_data = selected_reservation_data
-        self.reservation_index = reservation_index
-        party_size = int(selected_reservation_data.split("Party Size: ")[1].split(",")[0])
-        self.loadTableData(party_size)
 
+        reservation_id = selected_reservation_data[0]  # The first element is the reservation ID
+
+        # Save the reservation_id for later use
+        self.reservation_id = reservation_id
+        self.selected_reservation_data = selected_reservation_data
+
+        print(f"Selected reservation data: {selected_reservation_data}")
+        print(f"Selected reservation ID: {reservation_id}")
+
+        reservation_data = self.database.getReservationById(reservation_id)
+        if reservation_data:
+            print(f"Retrieved reservation data: {reservation_data}")
+            party_name, party_size, party_time = reservation_data[1], reservation_data[2], reservation_data[3]
+            self.loadTableData(party_size)
+        else:
+            messagebox.showerror("Data Error", "Reservation data could not be retrieved.")
+            print(f"Error retrieving reservation data for ID: {reservation_id}")
 
     def loadTableData(self, party_size=None):
-        self.tableListBox.delete(0, tk.END)
+        self.tableListBox.delete(0, tk.END)  # Clear previous data
         if self.database:
-            availableTables = self.database.getUnplacedTables()
+            # Fetch available tables from the database
+            availableTables = self.database.getUnplacedTables()  # This gets all tables where is_Occupied = 0
+            suitable_tables_found = False  # Flag to check if any table can accommodate the party size
+
             for table in availableTables:
                 table_id = table[0]
                 table_size = table[1]
 
+                # Filter tables based on party size
                 if party_size is None or table_size >= party_size:
+                    # Only show tables that are large enough to accommodate the party size
                     display_text = f"Table {table_id} (Seats: {table_size}) - Available"
-                    self.tableListBox.insert(tk.END, display_text)
-                elif table_size < party_size:
-                    pass
-                else:
-                    messagebox.showinfo("No Available Tables", "There are no open tables that can accomidate this "
-                                                           "reservation, Process and Complete orders to place this")
+                    self.tableListBox.insert(tk.END,
+                                             (table_id, display_text))  # Insert a tuple (table_id, display_text)
+                    suitable_tables_found = True  # Found a suitable table
+
+            # Show a message only if no suitable tables were found
+            if not suitable_tables_found:
+                messagebox.showinfo("No Available Tables",
+                                    "There are no open tables that can accommodate this reservation. "
+                                    "Process and Complete orders to place this.")
         else:
-            print("Database for Tables not Initialized")
+            print("Error: Database for Tables not Initialized")
 
     def reservationIntoOrder(self):
-        if not hasattr(self, 'selected_reservation_data'):
-            messagebox.showwarning("Input Error", "Please select a reservation")
+        selected_reservation = self.selected_reservation_data
+        if not selected_reservation:
+            messagebox.showwarning("Input Error", "Please select a reservation.")
             return
-        selected_reservation_data = self.selected_reservation_data
-        reservation_index = self.reservation_index
 
-        try:
-            party_name, details = selected_reservation_data.split(" (")
-            party_name = party_name.strip()  # Remove any leading/trailing whitespace
+        reservation_id = selected_reservation[0]  # Extract reservation ID
+        reservation_data = self.database.getReservationById(reservation_id)
 
-            # Step 2: Split the details by commas to extract Party Size and Time
-            details = details.strip(")")  # Remove the closing parenthesis
-            party_size_str, party_time_str = details.split(", ")
+        if reservation_data is None:
+            messagebox.showerror("Data Error", "Unable to retrieve reservation data.")
+            return
 
-            # Step 3: Extract party size and party time
-            party_size = int(party_size_str.split(": ")[1])  # Party Size is after "Party Size: "
-            party_time = party_time_str.split(": ")[1]  # Time is after "Time: "
-        except ValueError as e:
-            messagebox.showerror("Parsing Error","Failed to parse reservation data: " + str(e))
+        party_name, party_size, party_time = reservation_data[1], reservation_data[2], reservation_data[3]
 
-        #party_name = str(selected_reservation_data.split("Party Name: ")[1].split(",")[0])
-        #party_size = int(selected_reservation_data.split("Party Size: ")[2].split(",")[0])
-        #party_time = str(selected_reservation_data.split("Party Time: ")[3].split(",")[0])
-
-
+        # Step 2: Check if a table is selected
         selected_table = self.tableListBox.curselection()
         if not selected_table:
-            messagebox.showwarning("Input Error", "Please select a table")
+            messagebox.showwarning("Input Error", "Please select a table.")
             return
 
         table_index = selected_table[0]
-        selected_table_info = self.tableListBox.get(table_index)
+        selected_table_data = self.tableListBox.get(table_index)
+        table_id = selected_table_data[0]  # Extract table ID
 
-        try:
-            table_info_parts = selected_table_info.split(" (")
-            table_id_str = table_info_parts[0].replace("Table ","").strip()
-            table_id = int(table_id_str)
-        except IndexError:
-            messagebox.showerror("Table Error", "Table information is not in the expected format")
-            return
-        except ValueError:
-            messagebox.showerror("Table Error", "Failed to extract a valid table ID")
-            return
-
-
-        self.database.updateTableOccupied(table_id)
-        reservation_id = self.database.getReservationIDFromIndex(reservation_index)
+        # Step 3: Send data to `createOrder` in database.py
         self.database.createOrder(party_name, party_size, party_time, table_id, reservation_id)
-        #self.database.updateReservation(reservation_id)
 
-        messagebox.showinfo("Order Created", "Reservation has been placed")
+        # Step 4: Update reservation and table as "Placed" and "Occupied"
+        self.database.updateTableOccupied(table_id)  # Set the table as occupied
+        self.database.updateReservationPlaced(reservation_id)  # Set the reservation as placed
+
+        messagebox.showinfo("Success", f"Reservation for {party_name} has been placed at Table {table_id}.")
+
 
         self.app.currentReservationCount -= 1
         self.app.currentOrderCount += 1
@@ -323,11 +328,101 @@ class enterOrdersFrame(tk.Frame):
         self.orderEntryInstructions = tk.Label(self, text="Please select a table begin an order")
         self.orderEntryInstructions.pack(pady=20)
 
+        self.tableOrderListBox = tk.Listbox(self, width=60, height=10)
+        self.tableOrderListBox.pack(pady=5)
+
+        self.loadUnplacedOrders()
+
+        self.startOrderButton = tk.Button(self, text="Start Order", command=self.startOrder)
+        self.startOrderButton.pack(pady=10)
+
         self.removeOrderButton = tk.Button(self, text="Remove Order", command=self.removeOrderTest, fg='white',bg='red')
         self.removeOrderButton.pack(pady=5)
 
         self.orderCancelButton = tk.Button(self, text="Cancel", command=self.orderCancel, fg='white', bg='red')
         self.orderCancelButton.pack(pady=5)
+
+    def loadUnplacedOrders(self):
+        self.tableOrderListBox.delete(0, tk.END)  # Clear previous data
+        if self.database:
+            unprocessed_Orders = self.database.getOrdersNotOrdered()  # Fetch tables that are occupied but no order placed
+            for order in unprocessed_Orders:
+                order_id = order[0]
+                table_id = order[4]  # table_ID from the orders table
+                order_name = order[1]  # order_Name from the orders table
+                order_size = order[2]  # order_Size from the orders table
+                display_text = f"Order ID: {order_id}, Table: {table_id}, Name: {order_name}, Size: {order_size}"
+                self.tableOrderListBox.insert(tk.END, (display_text))
+        else:
+            print("Error: Database for Orders not initialized")
+
+    def startOrder(self):
+        """Start the order process by selecting food items for each person at the table."""
+        selected_order = self.tableOrderListBox.curselection()
+        if not selected_order:
+            messagebox.showwarning("Input Error", "Please select a table.")
+            return
+
+        order_index = selected_order[0]
+        selected_order_data = self.tableOrderListBox.get(order_index)
+        order_id = selected_order_data[0]  # Extract the order ID
+
+        # Proceed to order entry screen for this order
+        #self.processOrder(order_id)
+
+        # Get the number of people for the order
+        #table_data = self.database.getTableById(table_id)
+        #if not table_data:
+         #   messagebox.showerror("Data Error", "Table data not found.")
+          #  return
+
+        #table_size = table_data[1]  # The number of people seated at the table
+       # self.showMenu(table_size, table_id)
+
+    def showMenu(self, party_size, table_id):
+        """Show the menu items to be selected for the order."""
+        self.menuWindow = tk.Toplevel(self)
+        self.menuWindow.title("Select Menu Items")
+
+        self.menuLabel = tk.Label(self.menuWindow, text="Select a food item for each person:")
+        self.menuLabel.pack(pady=10)
+
+        # Load menu items from the database
+        menu_items = self.database.getMenuItems()
+
+        self.foodChoices = []
+        for i in range(party_size):
+            tk.Label(self.menuWindow, text=f"Person #{i + 1}:").pack()
+            food_choice_var = tk.StringVar(self.menuWindow)
+            food_choice_var.set(menu_items[0][1])  # Default selection
+            self.foodChoices.append(food_choice_var)
+
+            menu_dropdown = tk.OptionMenu(self.menuWindow, food_choice_var, *[item[1] for item in menu_items])
+            menu_dropdown.pack()
+
+        self.confirmOrderButton = tk.Button(self.menuWindow, text="Confirm Order",
+                                            command=lambda: self.confirmOrder(table_id, party_size))
+        self.confirmOrderButton.pack(pady=20)
+
+    def confirmOrder(self, table_id, party_size):
+        """Confirm the order and save it to the database."""
+        food_items = [food_choice.get() for food_choice in self.foodChoices]
+
+        # Save the order details to the database
+        order_time = "2024-12-15 18:30"  # Example time, should be dynamic
+        order_name = f"Order for Table {table_id}"
+        self.database.createOrder(order_name, party_size, order_time, table_id, reservation_id=None)
+
+        order_id = self.database.getLastOrderId()
+
+        for item_name in food_items:
+            item = self.database.getMenuItemByName(item_name)
+            if item:
+                item_id, item_price = item[0], item[2]
+                self.database.addOrderItem(order_id, item_id, item_price)
+
+        messagebox.showinfo("Success", "Order has been placed successfully.")
+        self.menuWindow.destroy()  # Close the menu window
 
     def removeOrderTest(self):
         self.app.currentReservationCount -= 1
