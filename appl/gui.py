@@ -444,13 +444,64 @@ class completeOrdersFrame(tk.Frame):
         self.master = master
         self.app = app
 
-        self.orderProcessInstructions = tk.Label(self, text="Select an order to finish")
+        self.orderProcessInstructions = tk.Label(self, text="Select an unpaid order to complete")
         self.orderProcessInstructions.pack(pady=20)
+
+        self.orderNotPaidListBox = tk.Listbox(self, width=60, height=10)
+        self.orderNotPaidListBox.pack(pady=10)
+
+        self.loadUnpaidOrders()  # Load unpaid orders into the list box
+
+        self.completeOrderButton = tk.Button(self, text="Complete Order", command=self.completeOrder)
+        self.completeOrderButton.pack(pady=10)
 
         self.orderProcessCancel = tk.Button(self, text="Cancel", command=self.cancelOrderProcess, fg='white', bg='red')
         self.orderProcessCancel.pack(pady=5)
 
-        #self.orderNotPaidListbox = tk.Listbox()
+    def loadUnpaidOrders(self):
+        """Load orders that haven't been paid into the Listbox."""
+        self.orderNotPaidListBox.delete(0, tk.END)  # Clear previous data
+        if self.database:
+            unpaidOrders = self.database.getUnpaidOrders()  # Fetch orders that haven't been paid
+            for order in unpaidOrders:
+                order_id = order[0]
+                table_id = order[4]  # table_ID from the orders table
+                order_name = order[1]  # order_Name from the orders table
+                order_size = order[2]  # order_Size from the orders table
+                display_text = f"Order ID: {order_id}, Table: {table_id}, Name: {order_name}, Size: {order_size}"
+                self.orderNotPaidListBox.insert(tk.END, (order_id, display_text))  # Insert a tuple with order_id and display text
+        else:
+            print("Error: Database for unpaid orders not initialized")
+
+    def completeOrder(self):
+        """Mark the selected order as completed and set the table as unoccupied."""
+        selected_order = self.orderNotPaidListBox.curselection()
+        if not selected_order:
+            messagebox.showwarning("Input Error", "Please select an order to complete.")
+            return
+
+        order_index = selected_order[0]
+        selected_order_data = self.orderNotPaidListBox.get(order_index)
+        order_id = selected_order_data[0]  # Extract order ID
+
+        order_data = self.database.getOrderById(order_id)
+        if not order_data:
+            messagebox.showerror("Data Error", "Unable to retrieve order data.")
+            return
+
+        # Step 1: Mark the order as completed (paid or finished)
+        self.database.completeOrder(order_id)
+
+        # Step 2: Update the table to unoccupied
+        table_id = order_data[4]  # Get table ID from the order data
+        self.database.updateTableEmpty(table_id)  # Set the table as unoccupied
+
+        # Update application data
+        self.app.currentOrderCount -= 1
+
+        messagebox.showinfo("Order Completed", f"Order {order_id} has been completed and the table is now unoccupied.")
+
+        self.master.showFrame(mainMenu, self.database, self.app)
 
     def cancelOrderProcess(self):
         self.master.showFrame(mainMenu, self.database, self.app)

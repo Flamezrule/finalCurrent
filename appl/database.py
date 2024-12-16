@@ -307,8 +307,22 @@ class DatabaseRef:
         conn.commit()
         conn.close()
 
-    def processOrder(self):
-        pass
+    def getUnpaidOrders(self):
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute('''SELECT * FROM orders WHERE is_Complete = 0''')
+        unpaid_Orders = c.fetchall()
+        conn.commit()
+        conn.close()
+        return unpaid_Orders
+
+    def completeOrder(self, orderID):
+        conn = self._connect()
+        c = conn.cursor()
+        c.execute('''
+                UPDATE orders SET is_Complete = 1 WHERE order_ID = ?''', (orderID,))
+        conn.commit()
+        conn.close()
 
     def getOrderHistory(self):
         conn = self._connect()
