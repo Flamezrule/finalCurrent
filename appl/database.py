@@ -53,19 +53,17 @@ class DatabaseRef:
 
         conn.commit()
 
-        c.execute('''CREATE TABLE IF NOT EXISTS orders (
+        c.execute('''CREATE TABLE IF NOT EXISTS orders ( 
                                 order_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                                 order_Name TEXT NOT NULL,
                                 order_Size INTEGER NOT NULL,
                                 order_Time TEXT NOT NULL,
                                 order_Table INTEGER,
-                                reservation_ID INTEGER,
                                 has_ordered INTEGER DEFAULT 0,
                                 is_Complete INTEGER DEFAULT 0,
                                 food_Cost DOUBLE DEFAULT 0.0,
                                 order_Cost DOUBLE DEFAULT 0.0,
-                                FOREIGN KEY(order_Table) REFERENCES tables(table_ID),
-                                FOREIGN KEY(reservation_ID) REFERENCES reservations(reservation_ID)
+                                FOREIGN KEY(order_Table) REFERENCES tables(table_ID)
                         )''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS order_choices (
@@ -108,7 +106,11 @@ class DatabaseRef:
             (3, "Fish", 10.99),
             (4, "BLT", 14.99),
             (5, "Chicken", 12.99),
-            (6, "Steak", 15.99)
+            (6, "Steak", 15.99),
+            (7, "Taco", 7.99),
+            (8, "Burrito", 9.99),
+            (9, "Sausage", 8.99),
+            (10, "Toast", 4.99)
         ])
 
         conn.commit()
@@ -190,9 +192,9 @@ class DatabaseRef:
         print(f"Reservation ID {reservationID} found.")
 
         c.execute('''
-        INSERT INTO orders (order_Name, order_Size, order_Time, order_Table, reservation_ID)
-        VALUES (?, ?, ?, ?, ?)
-        ''', (orderName, orderSize, orderTime, tableID, reservationID))
+        INSERT INTO orders (order_Name, order_Size, order_Time, order_Table)
+        VALUES (?, ?, ?, ?)
+        ''', (orderName, orderSize, orderTime, tableID))
 
         conn.commit()
 
@@ -247,7 +249,6 @@ class DatabaseRef:
         conn.close()
         return unordered_Orders
 
-
     def getMenuItems(self):
         """Retrieve the available menu items."""
         conn = self._connect()
@@ -261,10 +262,25 @@ class DatabaseRef:
         """Get a menu item by its name."""
         conn = self._connect()
         c = conn.cursor()
-        c.execute('SELECT * FROM menu_items WHERE item_Name = ?', (item_name,))
+        c.execute('SELECT item_ID, item_Name, item_Price FROM menu_items WHERE item_Name = ?', (item_name,))
         item = c.fetchone()
+        print(f"Item found: {item}")
         conn.close()
         return item
+
+    def updateOrderCost(self, order_id, total_cost):
+        """Update the total cost for the order."""
+        conn = self._connect()
+        c = conn.cursor()
+
+        c.execute('''
+        UPDATE orders
+        SET order_Cost = ?
+        WHERE order_ID = ?
+        ''', (total_cost, order_id))
+
+        conn.commit()
+        conn.close()
 
     def addOrderItem(self, order_id, item_id, item_price):
         """Add a food item to the order."""
@@ -274,6 +290,20 @@ class DatabaseRef:
                INSERT INTO order_choices (order_ID, item_ID, item_Cost)
                VALUES (?, ?, ?)
            ''', (order_id, item_id, item_price))
+        conn.commit()
+        conn.close()
+
+    def updateOrderOrdered(self, order_id):
+        """Mark the order as placed by setting is_Placed to 1."""
+        conn = self._connect()
+        c = conn.cursor()
+
+        c.execute('''
+        UPDATE orders
+        SET has_Ordered = 1
+        WHERE order_ID = ?
+        ''', (order_id,))
+
         conn.commit()
         conn.close()
 
@@ -291,18 +321,32 @@ class DatabaseRef:
         conn.close()
         return orders
 
-        #self.dbFolder = os.path.join(os.path.dirname(__file__), 'data')
-        #self.dbName = dbName
-        #self.dbPath = os.path.join(self.dbFolder, self.dbName)
+    def getOrderById(self, orderID):
+        conn = self._connect()
+        c = conn.cursor()
 
-        # Ensure the 'data' folder exists before initializing the database
-        #if not os.path.exists(self.dbFolder):
-            #os.makedirs(self.dbFolder)
+        # Query to fetch reservation details by ID
+        c.execute('''
+              SELECT * FROM orders WHERE order_ID = ?
+              ''', (orderID,))
+        order_data = c.fetchone()
 
-        #print(f"Database Path: {self.dbPath}")
+        conn.close()
+        conn.close()
+        return order_data
 
-        #abs_path = os.path.abspath(self.dbPath)
-        #print(f"Database file created at: {abs_path}")
+    def getFullOrderById(self, orderID):
+        conn = self._connect()
+        c = conn.cursor()
 
-        #self.dbName = dbName
-        #self.dbPath = os.path.join(os.path.dirname(__file__), 'data', self.dbName)
+        c.execute('''
+            SELECT menu_items.item_Name, order_choices.item_Cost, orders.order_Name 
+            FROM order_choices
+            JOIN menu_items ON order_choices.item_ID = menu_items.item_ID
+            JOIN orders ON order_choices.order_ID = orders.order_ID
+            WHERE order_choices.order_ID = ?
+            ''', (orderID,))
+
+        order_items = c.fetchall()
+        conn.close()
+        return order_items

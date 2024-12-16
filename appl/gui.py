@@ -15,7 +15,7 @@ class restaurantApp(tk.Tk):
         self.currentOrderCount = 0
 
         self.title("Restaurant Management System")
-        self.geometry("800x800")
+        self.geometry("500x500")
 
         self.mainMenuFrame = mainMenu(self, self.database, self)
         self.mainMenuFrame.pack()
@@ -104,7 +104,7 @@ class mainMenu(tk.Frame):
 
         if result: #If yes is picked
             self.database.clearDatabase()
-            messagebox.showinfo("Goodbye", "Later Skater")
+            messagebox.showinfo("Goodbye", "Shutting down and Clearing database. Goodbte!")
             self.quit()
         else:
             return
@@ -213,7 +213,7 @@ class processReservationFrame(tk.Frame):
                 party_name = reservation[1]
                 party_size = reservation[2]
                 party_time = reservation[3]
-                display_text = f"{party_name} (Party Size: {party_size}, Time: {party_time})"
+                display_text = f"{reservation_id} Name: {party_name} (Party Size: {party_size}, Time: {party_time})"
                 self.reservationNotSeated.insert(tk.END, (display_text))
         else:
             print("Error: Database for reservations not initialized")
@@ -325,7 +325,7 @@ class enterOrdersFrame(tk.Frame):
         self.master = master
         self.app = app
 
-        self.orderEntryInstructions = tk.Label(self, text="Please select a table begin an order")
+        self.orderEntryInstructions = tk.Label(self, text="Please select an Order to Begin Processing")
         self.orderEntryInstructions.pack(pady=20)
 
         self.tableOrderListBox = tk.Listbox(self, width=60, height=10)
@@ -333,11 +333,8 @@ class enterOrdersFrame(tk.Frame):
 
         self.loadUnplacedOrders()
 
-        self.startOrderButton = tk.Button(self, text="Start Order", command=self.startOrder)
+        self.startOrderButton = tk.Button(self, text="Begin Order", command=self.startOrder)
         self.startOrderButton.pack(pady=10)
-
-        self.removeOrderButton = tk.Button(self, text="Remove Order", command=self.removeOrderTest, fg='white',bg='red')
-        self.removeOrderButton.pack(pady=5)
 
         self.orderCancelButton = tk.Button(self, text="Cancel", command=self.orderCancel, fg='white', bg='red')
         self.orderCancelButton.pack(pady=5)
@@ -351,7 +348,7 @@ class enterOrdersFrame(tk.Frame):
                 table_id = order[4]  # table_ID from the orders table
                 order_name = order[1]  # order_Name from the orders table
                 order_size = order[2]  # order_Size from the orders table
-                display_text = f"Order ID: {order_id}, Table: {table_id}, Name: {order_name}, Size: {order_size}"
+                display_text = f"{order_id}, Table: {table_id}, Name: {order_name}, Size: {order_size}"
                 self.tableOrderListBox.insert(tk.END, (display_text))
         else:
             print("Error: Database for Orders not initialized")
@@ -360,26 +357,30 @@ class enterOrdersFrame(tk.Frame):
         """Start the order process by selecting food items for each person at the table."""
         selected_order = self.tableOrderListBox.curselection()
         if not selected_order:
-            messagebox.showwarning("Input Error", "Please select a table.")
+            messagebox.showwarning("Input Error", "Please select an Order.")
             return
 
         order_index = selected_order[0]
         selected_order_data = self.tableOrderListBox.get(order_index)
         order_id = selected_order_data[0]  # Extract the order ID
 
-        # Proceed to order entry screen for this order
-        #self.processOrder(order_id)
+        self.selected_order_id = order_id
+        self.selected_order_data = selected_order_data
 
-        # Get the number of people for the order
-        #table_data = self.database.getTableById(table_id)
-        #if not table_data:
-         #   messagebox.showerror("Data Error", "Table data not found.")
-          #  return
+        print(f"Selected order data: {selected_order_data}")
+        print(f"Selected order ID: {order_id}")
 
-        #table_size = table_data[1]  # The number of people seated at the table
-       # self.showMenu(table_size, table_id)
+        order_data = self.database.getOrderById(order_id)
+        if order_data:
+            print(f"Processing Order Data: {selected_order_data}")
+            party_size = order_data[2]
+            table_id = order_data[4]
+            self.showMenu(party_size, table_id, order_id)
+        else:
+            messagebox.showerror("Data Error", "Could not retrieve data")
+            print(f"Error pulling order Data for Order ID: {order_id}")
 
-    def showMenu(self, party_size, table_id):
+    def showMenu(self, party_size, table_id, order_id):
         """Show the menu items to be selected for the order."""
         self.menuWindow = tk.Toplevel(self)
         self.menuWindow.title("Select Menu Items")
@@ -394,38 +395,44 @@ class enterOrdersFrame(tk.Frame):
         for i in range(party_size):
             tk.Label(self.menuWindow, text=f"Person #{i + 1}:").pack()
             food_choice_var = tk.StringVar(self.menuWindow)
-            food_choice_var.set(menu_items[0][1])  # Default selection
+            food_choice_var.set(menu_items[0][1])  # Default selection (name of the first item)
             self.foodChoices.append(food_choice_var)
 
-            menu_dropdown = tk.OptionMenu(self.menuWindow, food_choice_var, *[item[1] for item in menu_items])
+            menu_dropdown = tk.OptionMenu(self.menuWindow, food_choice_var,
+                                          *[item[1] for item in menu_items])  # Only use item name
             menu_dropdown.pack()
 
-        self.confirmOrderButton = tk.Button(self.menuWindow, text="Confirm Order",
-                                            command=lambda: self.confirmOrder(table_id, party_size))
-        self.confirmOrderButton.pack(pady=20)
+        self.confirmOrderEntryButton = tk.Button(self.menuWindow, text="Confirm Order",
+                                                 command=lambda: self.confirmOrder(party_size, order_id))
+        self.confirmOrderEntryButton.pack(pady=20)
 
-    def confirmOrder(self, table_id, party_size):
+    def confirmOrder(self, party_size, order_id):
         """Confirm the order and save it to the database."""
         food_items = [food_choice.get() for food_choice in self.foodChoices]
 
-        # Save the order details to the database
-        order_time = "2024-12-15 18:30"  # Example time, should be dynamic
-        order_name = f"Order for Table {table_id}"
-        self.database.createOrder(order_name, party_size, order_time, table_id, reservation_id=None)
+        if not all(food_item for food_item in food_items):  # If any food choice is empty, show an error
+            messagebox.showwarning("Input Error", "Please make sure every person has picked a food item.")
+            return
 
-        order_id = self.database.getLastOrderId()
+        orderFoodCost = 0.0
 
         for item_name in food_items:
-            item = self.database.getMenuItemByName(item_name)
+            item = self.database.getMenuItemByName(item_name)  # We now query using the plain food name
             if item:
-                item_id, item_price = item[0], item[2]
-                self.database.addOrderItem(order_id, item_id, item_price)
+                item_id, item_name, item_price = item  # Unpack all three elements
+                if item_price is not None:  # Check if price is valid
+                    orderFoodCost += item_price
+                    self.database.addOrderItem(order_id, item_id, item_price)
+                else:
+                    print(f"Error: Item '{item_name}' has no price.")
+            else:
+                print(f"Error: Item '{item_name}' not found.")
 
-        messagebox.showinfo("Success", "Order has been placed successfully.")
+        self.database.updateOrderCost(order_id, orderFoodCost)
+        self.database.updateOrderOrdered(order_id)
+        messagebox.showinfo("Success", f"Your order for {party_size} guests will be ${orderFoodCost:.2f}.")
         self.menuWindow.destroy()  # Close the menu window
-
-    def removeOrderTest(self):
-        self.app.currentReservationCount -= 1
+        self.master.showFrame(mainMenu, self.database, self.app)
 
     def orderCancel(self):
         self.master.showFrame(mainMenu, self.database, self.app)
@@ -437,11 +444,13 @@ class completeOrdersFrame(tk.Frame):
         self.master = master
         self.app = app
 
-        self.orderProcessInstructions = tk.Label(self, text="Menu for paying our orders")
+        self.orderProcessInstructions = tk.Label(self, text="Select an order to finish")
         self.orderProcessInstructions.pack(pady=20)
 
         self.orderProcessCancel = tk.Button(self, text="Cancel", command=self.cancelOrderProcess, fg='white', bg='red')
         self.orderProcessCancel.pack(pady=5)
+
+        #self.orderNotPaidListbox = tk.Listbox()
 
     def cancelOrderProcess(self):
         self.master.showFrame(mainMenu, self.database, self.app)
@@ -453,11 +462,18 @@ class viewOrderHistoryFrame(tk.Frame):
         self.master = master
         self.app = app
 
-        self.orderHistoryInstructions = tk.Label(self, text="Menu to see order history")
+        self.orderHistoryInstructions = tk.Label(self, text="Completed Order History Today")
         self.orderHistoryInstructions.pack(pady=20)
 
         self.orderHistoryListBox = tk.Listbox(self, width=60, height=10)
         self.orderHistoryListBox.pack(pady=10)
+
+        self.orderDeepButton = tk.Button(self, text="See more about this order", command=self.checkOrderHistory)
+        self.orderDeepButton.pack(pady=10)
+
+        self.orderDeepHistoryListBox = tk.Listbox(self, width=60, height=10)
+        self.orderDeepHistoryListBox.pack(pady=10)
+
 
         self.orderHistoryReturnButton = tk.Button(self, text="Return", command=self.orderHistoryReturn, fg='white', bg='red')
         self.orderHistoryReturnButton.pack(pady=5)
@@ -469,10 +485,52 @@ class viewOrderHistoryFrame(tk.Frame):
         if self.database:
             finishedOrders = self.database.getOrderHistory()
             for order in finishedOrders:
-                display_text = f"(ID: {order[0]}) (Order Name: {order[1]}) (Party Size: {order[2]}) (Order Time: {order[3]}) (Table sat at: {order[4]})"
+                display_text = f"{order[0]} (Order Name: {order[1]}) (Party Size: {order[2]}) (Order Time: {order[3]}) (Table sat at: {order[4]})"
                 self.orderHistoryListBox.insert(tk.END, display_text)
         else:
             print("Error: Database for Orders not Initialized")
+
+    def checkOrderHistory(self):
+        selectedOrder = self.orderHistoryListBox.curselection()
+        if not selectedOrder:
+            messagebox.showwarning("Input Error", "Please Select an Order to see more about")
+        orderIndex = selectedOrder[0]
+        selected_order_data = self.orderHistoryListBox.get(orderIndex)
+
+        order_ID = selected_order_data[0]
+
+        self.order_ID = order_ID
+        self.selected_order_data = selected_order_data
+
+        order_data = self.database.getFullOrderById(order_ID)
+
+        if not order_data:
+            messagebox.showwarning("Order Error", "The selected order is invalid or doesn't exist.")
+            return
+
+            # If valid, proceed to load the deep history
+        self.loadDeepHistory(order_ID)
+
+
+    def loadDeepHistory(self, order_ID):
+        order_items = self.database.getOrderItemsByOrderId(order_ID)
+        total_cost = 0.0
+        customer_order_data = []  # List to hold the display data for the customers
+        for item in order_items:
+            item_name = item[0]  # Item name from order_choices
+            item_price = item[1]  # Item cost from order_choices
+            total_cost += item_price
+            customer_order_data.append(f"{item_name} - ${item_price:.2f}")
+
+            # Display the details in the deep history list box
+        self.orderDeepHistoryListBox.delete(0, tk.END)  # Clear any previous data
+        self.orderDeepHistoryListBox.insert(tk.END, f"Total Cost: ${total_cost:.2f}")
+        for data in customer_order_data:
+            self.orderDeepHistoryListBox.insert(tk.END, data)
+
+
+
+
 
     def orderHistoryReturn(self):
         self.master.showFrame(mainMenu, self.database, self.app)
